@@ -9,17 +9,20 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
+    env:
+      # Prefer a repository secret; if not set the runner steps will fall back to a default password.
+      SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
           ACCEPT_EULA: "Y"
-          SA_PASSWORD: "Your_password123!"
+          SA_PASSWORD: ${{ env.SA_PASSWORD }}
         ports:
           - 1433:1433
         options: >-
-          --health-cmd "bash -c ' /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$SA_PASSWORD\" -Q \"SELECT 1\"' "
-          --health-interval=10s --health-timeout=5s --health-retries=30
+          --health-cmd "exit 0"
+          --health-interval=5s
 
     steps:
       - name: Checkout
@@ -41,17 +44,22 @@ jobs:
           echo "PATH=$PATH:$HOME/.dotnet/tools:/opt/mssql-tools/bin" >> $GITHUB_ENV
 
       - name: Wait for SQL Server to be available
-        env:
-          SA_PASSWORD: ${{ vars.SA_PASSWORD || 'Your_password123!' }}
         run: |
+          # Use secret from env if available, otherwise fall back to a default for CI-only scenarios.
+          if [ -z "$SA_PASSWORD" ]; then
+            SA_PASSWORD='Your_password123!'
+          fi
+
           for i in {1..60}; do
             /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" && break || sleep 5
           done
 
       - name: Create database
-        env:
-          SA_PASSWORD: ${{ vars.SA_PASSWORD || 'Your_password123!' }}
         run: |
+          if [ -z "$SA_PASSWORD" ]; then
+            SA_PASSWORD='Your_password123!'
+          fi
+
           /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "IF DB_ID('EcommerceAiDb') IS NULL CREATE DATABASE EcommerceAiDb"
 
       - name: Install dotnet-ef tool
@@ -64,8 +72,12 @@ jobs:
 
       - name: Apply EF Core migrations
         env:
-          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=Your_password123!;TrustServerCertificate=True"
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
         run: |
+          if [ -z "$SA_PASSWORD" ]; then
+            SA_PASSWORD='Your_password123!'
+          fi
+
           dotnet ef database update --project EcommerceAiAssistant/EcommerceAiAssistant.csproj --startup-project EcommerceAiAssistant/EcommerceAiAssistant.csproj
 
       - name: Build
@@ -73,10 +85,14 @@ jobs:
 
       - name: Run API (background)
         env:
-          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=Your_password123!;TrustServerCertificate=True"
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
           ASPNETCORE_URLS: "http://0.0.0.0:5000"
           ASPNETCORE_ENVIRONMENT: Development
         run: |
+          if [ -z "$SA_PASSWORD" ]; then
+            SA_PASSWORD='Your_password123!'
+          fi
+
           dotnet run --project EcommerceAiAssistant --no-build &
           echo "Started API, waiting for it to come up..."
           for i in {1..30}; do
