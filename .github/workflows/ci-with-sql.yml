@@ -1,0 +1,96 @@
+name: CI with SQL Server
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: "Your_password123!"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "bash -c ' /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$SA_PASSWORD\" -Q \"SELECT 1\"' "
+          --health-interval=10s --health-timeout=5s --health-retries=30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install sqlcmd (mssql-tools)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl apt-transport-https gnupg
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools
+          echo "PATH=$PATH:$HOME/.dotnet/tools:/opt/mssql-tools/bin" >> $GITHUB_ENV
+
+      - name: Wait for SQL Server to be available
+        env:
+          SA_PASSWORD: ${{ vars.SA_PASSWORD || 'Your_password123!' }}
+        run: |
+          for i in {1..60}; do
+            /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" && break || sleep 5
+          done
+
+      - name: Create database
+        env:
+          SA_PASSWORD: ${{ vars.SA_PASSWORD || 'Your_password123!' }}
+        run: |
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "IF DB_ID('EcommerceAiDb') IS NULL CREATE DATABASE EcommerceAiDb"
+
+      - name: Install dotnet-ef tool
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.*
+          echo "PATH=$PATH:$HOME/.dotnet/tools" >> $GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore EcommerceAiAssistant/EcommerceAiAssistant.csproj
+
+      - name: Apply EF Core migrations
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=Your_password123!;TrustServerCertificate=True"
+        run: |
+          dotnet ef database update --project EcommerceAiAssistant/EcommerceAiAssistant.csproj --startup-project EcommerceAiAssistant/EcommerceAiAssistant.csproj
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore EcommerceAiAssistant/EcommerceAiAssistant.csproj
+
+      - name: Run API (background)
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=Your_password123!;TrustServerCertificate=True"
+          ASPNETCORE_URLS: "http://0.0.0.0:5000"
+          ASPNETCORE_ENVIRONMENT: Development
+        run: |
+          dotnet run --project EcommerceAiAssistant --no-build &
+          echo "Started API, waiting for it to come up..."
+          for i in {1..30}; do
+            curl -sS -o /dev/null -w "%{http_code}" http://localhost:5000/swagger/index.html | grep 200 && break || sleep 3
+          done
+
+      - name: Smoke test
+        run: |
+          curl -fS http://localhost:5000/swagger/index.html
+
+      - name: Publish artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-artifacts
+          path: |
+            EcommerceAiAssistant/bin/Release
