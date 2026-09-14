@@ -40,13 +40,17 @@ jobs:
       - name: Install sqlcmd (mssql-tools)
         if: env.SA_PRESENT == 'true'
         run: |
+          set -eux
           sudo apt-get update
-          sudo apt-get install -y curl apt-transport-https gnupg
-          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          sudo apt-get install -y curl apt-transport-https ca-certificates gnupg
+          # Add Microsoft package signing key and repository for Ubuntu 22.04
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
           curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
           sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools
-          echo "PATH=$PATH:$HOME/.dotnet/tools:/opt/mssql-tools/bin" >> $GITHUB_ENV
+          # Install ODBC driver and mssql-tools
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools unixodbc-dev
+          # Add mssql-tools to PATH for following steps
+          echo "PATH=/opt/mssql-tools/bin:$PATH" >> $GITHUB_ENV
 
       - name: Wait for SQL Server to be available
         if: env.SA_PRESENT == 'true'
