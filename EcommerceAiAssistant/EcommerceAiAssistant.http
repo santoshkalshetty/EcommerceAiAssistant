@@ -1,0 +1,6 @@
+@EcommerceAiAssistant_HostAddress = http://localhost:5082
+
+GET {{EcommerceAiAssistant_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

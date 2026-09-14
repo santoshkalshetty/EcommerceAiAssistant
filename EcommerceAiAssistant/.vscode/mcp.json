@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "ecommerce-ai": {
+      "type": "http",
+      "url": "https://localhost:5082/mcp"
+    }
+  }
+}
