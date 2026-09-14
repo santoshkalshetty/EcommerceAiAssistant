@@ -104,11 +104,14 @@ jobs:
 
       - name: Apply EF Core migrations
         if: env.SA_PRESENT == 'true'
-        env:
-          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
         run: |
           set -o pipefail
-          dotnet ef database update --project EcommerceAiAssistant/EcommerceAiAssistant.csproj --startup-project EcommerceAiAssistant/EcommerceAiAssistant.csproj || (
+          # Build a connection string using the SA_PASSWORD provided to the job.
+          CONN="Server=127.0.0.1,1433;Database=EcommerceAiDb;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
+
+          echo "Using connection: Server=127.0.0.1,1433;Database=EcommerceAiDb;User Id=sa;Password=***REDACTED***;TrustServerCertificate=True"
+
+          dotnet ef database update --project EcommerceAiAssistant/EcommerceAiAssistant.csproj --startup-project EcommerceAiAssistant/EcommerceAiAssistant.csproj --connection "$CONN" || (
             echo "dotnet ef failed. Dumping SQL Server container logs for diagnosis:" >&2
             cid=$(docker ps --filter name=sqlserver-ci -q | head -n1)
             if [ -n "$cid" ]; then
