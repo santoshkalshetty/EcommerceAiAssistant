@@ -10,16 +10,16 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     env:
-      # Use repository secret when available, otherwise use a safe test fallback.
-      SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'Your_password123!' }}
+      # The SA password must be provided as a repository secret named `SA_PASSWORD`.
+      # This workflow will fail early with a clear message if the secret is missing.
+      SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
           ACCEPT_EULA: "Y"
-          # Service definitions cannot reliably reference job-level env variables in Actions,
-          # so pass the secret (or fallback) directly here.
-          SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'Your_password123!' }}
+          # Pass the SA password from the repository secret into the SQL Server container.
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
         ports:
           - 1433:1433
         options: >-
