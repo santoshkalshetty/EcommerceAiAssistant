@@ -129,13 +129,19 @@ jobs:
         if: env.SA_PRESENT == 'true'
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=EcommerceAiDb;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
-          ASPNETCORE_URLS: "http://0.0.0.0:5000"
           ASPNETCORE_ENVIRONMENT: Development
         run: |
-          dotnet run --project EcommerceAiAssistant --no-build &
+          # Start the API explicitly binding to 0.0.0.0:5000 so the runner can reach it
+          dotnet run --project EcommerceAiAssistant --no-build --urls "http://0.0.0.0:5000" &
           echo "Started API, waiting for it to come up..."
           for i in {1..30}; do
-            curl -sS -o /dev/null -w "%{http_code}" http://localhost:5000/swagger/index.html | grep 200 && break || sleep 3
+            status=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/swagger/index.html || true)
+            echo "Attempt $i - HTTP status: $status"
+            if [ "$status" = "200" ]; then
+              echo "API is up"
+              break
+            fi
+            sleep 3
           done
 
       - name: Smoke test
