@@ -17,20 +17,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for SA_PASSWORD secret
-        id: check-sa
+      - name: Prepare SA_PASSWORD
+        id: prepare-sa
         run: |
+          # If the repository secret is not provided, use a CI-only fallback so integration steps still run.
           if [ -z "${{ secrets.SA_PASSWORD }}" ]; then
-            echo "SA_PRESENT=false" >> $GITHUB_ENV
-            echo "Warning: Repository secret 'SA_PASSWORD' is not set. Database integration steps will be skipped. Set the secret to enable full integration testing." >&2
+            echo "Warning: Repository secret 'SA_PASSWORD' is not set. Using fallback password 'Your_password123!' for CI run. Set the secret to enable secure integration testing." >&2
+            echo "SA_PASSWORD=Your_password123!" >> $GITHUB_ENV
           else
-            echo "SA_PRESENT=true" >> $GITHUB_ENV
+            echo "SA_PASSWORD=${{ secrets.SA_PASSWORD }}" >> $GITHUB_ENV
           fi
+          echo "SA_PRESENT=true" >> $GITHUB_ENV
 
-      - name: Start SQL Server container (when secret set)
-        if: env.SA_PRESENT == 'true'
+      - name: Start SQL Server container
         run: |
-          docker run -e 'ACCEPT_EULA=Y' -e "SA_PASSWORD=${{ secrets.SA_PASSWORD }}" -p 1433:1433 --name sqlserver-ci -d mcr.microsoft.com/mssql/server:2022-latest --health-cmd "exit 0"
+          docker run -e 'ACCEPT_EULA=Y' -e "SA_PASSWORD=$SA_PASSWORD" -p 1433:1433 --name sqlserver-ci -d mcr.microsoft.com/mssql/server:2022-latest --health-cmd "exit 0"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
